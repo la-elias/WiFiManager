@@ -654,7 +654,10 @@ void WiFiManager::setupHTTPServer(){
   server->on(WM_G(R_erase),      std::bind(&WiFiManager::handleErase, this, false));
   server->on(WM_G(R_status),     std::bind(&WiFiManager::handleWiFiStatus, this));
   server->onNotFound (std::bind(&WiFiManager::handleNotFound, this));
-  
+  server->on("/connecting", std::bind(&WiFiManager::handleConnecting, this));
+  server->on("/result", std::bind(&WiFiManager::handleResult, this));
+  server->on("/status", std::bind(&WiFiManager::handleStatus, this));
+
   server->on(WM_G(R_update), std::bind(&WiFiManager::handleUpdate, this));
   server->on(WM_G(R_updatedone), HTTP_POST, std::bind(&WiFiManager::handleUpdateDone, this), std::bind(&WiFiManager::handleUpdating, this));
   
@@ -905,6 +908,7 @@ uint8_t WiFiManager::processConfigPortal(){
             #endif
             _savewificallback(); // @CALLBACK
           }
+          _connectFailed = false;
           if(!_connectonsave) return WL_IDLE_STATUS;
           if(_disableConfigPortal) shutdownConfigPortal();
           return WL_CONNECTED; // CONNECT SUCCESS
@@ -912,6 +916,7 @@ uint8_t WiFiManager::processConfigPortal(){
         #ifdef WM_DEBUG_LEVEL
         DEBUG_WM(WM_DEBUG_ERROR,F("[ERROR] Connect to new AP Failed"));
         #endif
+        _connectFailed = true; // set flag for result page
       }
  
       if (_shouldBreakAfterConfig) {
@@ -1889,8 +1894,10 @@ void WiFiManager::handleWifiSave() {
   if(_showBack) page += FPSTR(HTTP_BACKBTN);
   page += FPSTR(HTTP_END);
 
-  server->sendHeader(FPSTR(HTTP_HEAD_CORS), FPSTR(HTTP_HEAD_CORS_ALLOW_ALL)); // @HTTPHEAD send cors
-  HTTPSend(page);
+  // server->sendHeader(FPSTR(HTTP_HEAD_CORS), FPSTR(HTTP_HEAD_CORS_ALLOW_ALL)); // @HTTPHEAD send cors
+  // HTTPSend(page);
+  server->sendHeader("Location", "/result", true);
+  server->send(302, "text/plain", "");
 
   #ifdef WM_DEBUG_LEVEL
   DEBUG_WM(WM_DEBUG_DEV,F("Sent wifi save page"));
@@ -4011,6 +4018,119 @@ void WiFiManager::handleUpdateDone() {
 	if (!Update.hasError()) {
 		ESP.restart();
 	}
+}
+
+void WiFiManager::handleConnecting() {
+  String page;
+  page = getHTTPHead("Connecting...");
+
+  page += "<style>";
+  page += "  .loader {";
+  page += "    width: 60px;";
+  page += "    aspect-ratio: 2;";
+  page += "    --_g: no-repeat radial-gradient(circle closest-side,#000 90%,#0000);";
+  page += "    background: ";
+  page += "      var(--_g) 0%   50%,";
+  page += "      var(--_g) 50%  50%,";
+  page += "      var(--_g) 100% 50%;";
+  page += "    background-size: calc(100%/3) 50%;";
+  page += "    animation: l3 1s infinite linear;";
+  page += "  }";
+  page += "  @keyframes l3 {";
+  page += "    20%{background-position:0%   0%, 50%  50%,100%  50%}";
+  page += "    40%{background-position:0% 100%, 50%   0%,100%  50%}";
+  page += "    60%{background-position:0%  50%, 50% 100%,100%   0%}";
+  page += "    80%{background-position:0%  50%, 50%  50%,100% 100%}";
+  page += "  }";
+  page += "</style>";
+
+  // Display a loader or progress indicator
+  page += "<h2>Connecting to the network...</h2>";
+  page += "<div id=\"loader\">";
+  page += "  <div class=\"loader\"></div>"; // Your loader div
+  page += "</div>";
+
+  // Placeholder for displaying the result
+  page += "<div id=\"result\"></div>";
+
+  // JavaScript code for polling the connection status
+  page += "<script>";
+  page += "var attempts = 0;";
+  page += "var maxAttempts = 15;";
+  page += "function checkConnection() {";
+  page += "  attempts++;";
+  page += "  fetch('/status')"
+          "    .then(response => response.json())"
+          "    .then(data => {";
+  page += "      if (data.connected) {";
+  page += "        document.getElementById('loader').style.display = 'none';";
+  page += "        document.getElementById('result').innerHTML = '<h2>Successfully connected to " + _ssid + "</h2>';";
+  page += "        document.getElementById('result').innerHTML += '<p>IP Address: ' + data.ip + '</p>';";
+  page += "      } else if (data.failed || attempts >= maxAttempts) {";
+  page += "        document.getElementById('loader').style.display = 'none';";
+  page += "        document.getElementById('result').innerHTML = '<h2>Failed to connect to " + _ssid + "</h2>';";
+  page += "        document.getElementById('result').innerHTML += '<p>Please check your credentials and try again.</p>';";
+  page += "        document.getElementById('result').innerHTML += '<a href=\"/wifi\">Try Again</a>';";
+  page += "      } else {";
+  page += "        setTimeout(checkConnection, 2000);";
+  page += "      }";
+  page += "    })"
+          "    .catch(error => {"
+          "      console.error('Error:', error);"
+          "      setTimeout(checkConnection, 2000);"
+          "    });";
+  page += "}";
+  page += "checkConnection();";
+  page += "</script>";
+
+  page += FPSTR(HTTP_END);
+  
+  server->send(200, "text/html", page);
+}
+
+void WiFiManager::handleResult() {
+  String page;
+  page = getHTTPHead("Connection Result");
+  page += "<h2>";
+
+  if (WiFi.status() == WL_CONNECTED) {
+    page += "Successfully connected to ";
+    page += _ssid;
+    page += "</h2>";
+    page += "<p>IP Address: ";
+    page += WiFi.localIP().toString();
+    page += "</p>";
+
+    // Optionally, shut down the portal
+    shutdownConfigPortal();
+  } else {
+    page += "Failed to connect to ";
+    page += _ssid;
+    page += "</h2>";
+    page += "<p>Please check your credentials and try again.</p>";
+    page += "<a href=\"/wifi\">Try Again</a>";
+  }
+
+  page += FPSTR(HTTP_END);
+  server->send(200, "text/html", page);
+
+  // Reset the SSID and password to allow re-entry
+  _ssid = "";
+  _pass = "";
+}
+
+void WiFiManager::handleStatus  () {
+  String json = "{ ";
+  if (WiFi.status() == WL_CONNECTED) {
+    json += "\"connected\": true, ";
+    json += "\"ip\": \"" + WiFi.localIP().toString() + "\"";
+  } else if (_connectFailed) {
+    json += "\"failed\": true";
+  } else {
+    json += "\"connected\": false";
+  }
+  json += " }";
+  server->send(200, "application/json", json);
 }
 
 #endif

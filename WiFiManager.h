@@ -485,6 +485,15 @@ class WiFiManager
     // set port of webserver, 80
     void          setHttpPort(uint16_t port);
 
+    // handle connection process 
+    void         handleConnecting();
+
+    // handle result of connection
+    void          handleResult();
+
+    // handle status page
+    void          handleStatus();
+
     // check if config portal is active (true)
     bool          getConfigPortalActive();
     
@@ -563,6 +572,7 @@ class WiFiManager
                                                    // on some conn failure modes will add delays and many retries to work around esp and ap bugs, ie, anti de-auth protections
                                                    // https://github.com/tzapu/WiFiManager/issues/1067
     bool          _allowExit              = true; // allow exit in nonblocking, else user exit/abort calls will be ignored including cptimeout
+    bool          _connectFailed          = false; // flag if connect failed
 
     #ifdef ESP32
     wifi_event_id_t wm_event_id           = 0;
