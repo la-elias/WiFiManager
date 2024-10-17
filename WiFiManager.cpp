@@ -1339,12 +1339,12 @@ void WiFiManager::handleRoot() {
   handleRequest();
   String page = getHTTPHead(_title); // @token options @todo replace options with title
   String str  = FPSTR(HTTP_ROOT_MAIN); // @todo custom title
-  str.replace(FPSTR(T_t),_title);
-  str.replace(FPSTR(T_v),configPortalActive ? _apName : (getWiFiHostname() + " - " + WiFi.localIP().toString())); // use ip if ap is not active for heading @todo use hostname?
+  // str.replace(FPSTR(T_t),_title);
+  // str.replace(FPSTR(T_v),configPortalActive ? _apName : (getWiFiHostname() + " - " + WiFi.localIP().toString())); // use ip if ap is not active for heading @todo use hostname?
   page += str;
   page += FPSTR(HTTP_PORTAL_OPTIONS);
   page += getMenuOut();
-  reportStatus(page);
+  // reportStatus(page);
   page += FPSTR(HTTP_END);
 
   HTTPSend(page);
@@ -1363,6 +1363,7 @@ void WiFiManager::handleWifi(boolean scan) {
   #endif
   handleRequest();
   String page = getHTTPHead(FPSTR(S_titlewifi)); // @token titlewifi
+  page += FPSTR(HTTP_SCAN_LINK);
   if (scan) {
     #ifdef WM_DEBUG_LEVEL
     // DEBUG_WM(WM_DEBUG_DEV,"refresh flag:",server->hasArg(F("refresh")));
@@ -1370,37 +1371,36 @@ void WiFiManager::handleWifi(boolean scan) {
     WiFi_scanNetworks(server->hasArg(F("refresh")),false); //wifiscan, force if arg refresh
     page += getScanItemOut();
   }
-  String pitem = "";
+  // String pitem = "";
 
-  pitem = FPSTR(HTTP_FORM_START);
-  pitem.replace(FPSTR(T_v), F("wifisave")); // set form action
-  page += pitem;
+  // pitem = FPSTR(HTTP_FORM_START);
+  // pitem.replace(FPSTR(T_v), F("wifisave")); // set form action
+  // page += pitem;
 
-  pitem = FPSTR(HTTP_FORM_WIFI);
-  pitem.replace(FPSTR(T_v), WiFi_SSID());
+  // pitem = FPSTR(HTTP_FORM_WIFI);
+  // pitem.replace(FPSTR(T_v), WiFi_SSID());
 
-  if(_showPassword){
-    pitem.replace(FPSTR(T_p), WiFi_psk());
-  }
-  else if(WiFi_psk() != ""){
-    pitem.replace(FPSTR(T_p),FPSTR(S_passph));    
-  }
-  else {
-    pitem.replace(FPSTR(T_p),"");    
-  }
+  // if(_showPassword){
+  //   pitem.replace(FPSTR(T_p), WiFi_psk());
+  // }
+  // else if(WiFi_psk() != ""){
+  //   pitem.replace(FPSTR(T_p),FPSTR(S_passph));    
+  // }
+  // else {
+  //   pitem.replace(FPSTR(T_p),"");    
+  // }
 
-  page += pitem;
+  // page += pitem;
 
   page += getStaticOut();
-  page += FPSTR(HTTP_FORM_WIFI_END);
+  // page += FPSTR(HTTP_FORM_WIFI_END);
   if(_paramsInWifi && _paramsCount>0){
     page += FPSTR(HTTP_FORM_PARAM_HEAD);
     page += getParamOut();
   }
-  page += FPSTR(HTTP_FORM_END);
-  page += FPSTR(HTTP_SCAN_LINK);
+  // page += FPSTR(HTTP_FORM_END);
   if(_showBack) page += FPSTR(HTTP_BACKBTN);
-  reportStatus(page);
+  // reportStatus(page);
   page += FPSTR(HTTP_END);
 
   HTTPSend(page);
@@ -4089,30 +4089,24 @@ void WiFiManager::handleConnecting() {
 }
 
 void WiFiManager::handleResult() {
-  String page;
-  page = getHTTPHead("Connection Result");
-  page += "<h2>";
-
   if (WiFi.status() == WL_CONNECTED) {
-    page += "Successfully connected to ";
-    page += _ssid;
-    page += "</h2>";
-    page += "<p>IP Address: ";
-    page += WiFi.localIP().toString();
-    page += "</p>";
+    // Send the success page
+    String page = FPSTR(HTTP_SUCCESS_PAGE);
+    page += FPSTR(HTTP_END);
+    server->send(200, "text/html", page);
 
-    // Optionally, shut down the portal
-    shutdownConfigPortal();
+    // Delay the portal shutdown to allow the user to see the success page
+    _configPortalTimeout = millis() + 3000; // Shutdown in 5 seconds
   } else {
-    page += "Failed to connect to ";
-    page += _ssid;
-    page += "</h2>";
-    page += "<p>Please check your credentials and try again.</p>";
-    page += "<a href=\"/wifi\">Try Again</a>";
-  }
+    // Send the custom error page
+    String page = FPSTR(HTTP_ERROR_PAGE);
+    page += FPSTR(HTTP_END);
 
-  page += FPSTR(HTTP_END);
-  server->send(200, "text/html", page);
+    // Optionally include the SSID in the error message
+    // page.replace("{ssid}", _ssid);
+
+    server->send(200, "text/html", page);
+  }
 
   // Reset the SSID and password to allow re-entry
   _ssid = "";
